@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from time import mktime
 
-# 1. Map your feeds to the GitHub Secrets we created
 FEEDS = {
     "AI News": {
         "url": "https://www.artificialintelligence-news.com/feed/",
@@ -28,41 +27,59 @@ FEEDS = {
     }
 }
 
+# We disguise our script as a standard Google Chrome browser on Windows
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+}
+
 def send_to_discord(webhook_url, entry, feed_name):
-    # This formats the message to look like the Rich Embed you wanted
     embed = {
         "title": entry.title,
         "url": entry.link,
-        "description": entry.get("summary", "")[:300] + "...", # Grabs a snippet of the article
-        "color": 3447003, # A nice blue color
+        "description": entry.get("summary", "")[:300] + "...",
+        "color": 3447003,
         "author": {"name": feed_name}
     }
     
-    # Check if there is a media thumbnail attached to the RSS entry
     if 'media_content' in entry and len(entry.media_content) > 0:
         embed["image"] = {"url": entry.media_content[0]['url']}
     
     payload = {"embeds": [embed]}
-    requests.post(webhook_url, json=payload)
+    try:
+        requests.post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Failed to send to Discord: {e}")
 
 def main():
     now = datetime.now(timezone.utc)
-    time_window = timedelta(minutes=20) # Only look at the last 20 minutes
+    time_window = timedelta(minutes=20) 
 
     for name, data in FEEDS.items():
         if not data["webhook"]:
+            print(f"Skipping {name}: No webhook configured.")
             continue
             
-        feed = feedparser.parse(data["url"])
-        
-        for entry in feed.entries:
-            if hasattr(entry, 'published_parsed'):
-                # Convert RSS time to a usable Python datetime object
-                published_time = datetime.fromtimestamp(mktime(entry.published_parsed), timezone.utc)
-                
-                # If the article is newer than 20 minutes ago, send it!
-                if now - published_time <= time_window:
-                    send_to_discord(data["webhook"], entry, name)
+        print(f"Fetching {name}...")
+        try:
+            # 1. Fetch the raw XML data using requests with our fake browser headers
+            response = requests.get(data["url"], headers=HEADERS, timeout=15)
+            response.raise_for_status() # Check if the website returned an error (like 403 Forbidden)
+            
+            # 2. Pass the raw content to feedparser
+            feed = feedparser.parse(response.content)
+            
+            for entry in feed.entries:
+                if hasattr(entry, 'published_parsed') and entry.published_parsed is not None:
+                    published_time = datetime.fromtimestamp(mktime(entry.published_parsed), timezone.utc)
+                    
+                    if now - published_time <= time_window:
+                        print(f"Sending new article: {entry.title}")
+                        send_to_discord(data["webhook"], entry, name)
+                        
+        except Exception as e:
+            # If a site blocks us, print the error but continue to the next site
+            print(f"Error processing {name}: {e}")
 
 if __name__ == "__main__":
     main()
