@@ -1,0 +1,30 @@
+name: RSS to Discord Pipeline
+
+on:
+  schedule:
+    - cron: '*/20 * * * *' # Runs every 20 minutes
+  workflow_dispatch: # Allows you to trigger it manually for testing
+
+jobs:
+  run-rss-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Feed Parser
+        env:
+          WEBHOOK_AI: ${{ secrets.WEBHOOK_AI }}
+          WEBHOOK_HARDWARE: ${{ secrets.WEBHOOK_HARDWARE }}
+          WEBHOOK_GEOPOLITICS: ${{ secrets.WEBHOOK_GEOPOLITICS }}
+          WEBHOOK_AVIATION_MIL: ${{ secrets.WEBHOOK_AVIATION_MIL }}
+          WEBHOOK_AVIATION_CIV: ${{ secrets.WEBHOOK_AVIATION_CIV }}
+        run: python main.py
