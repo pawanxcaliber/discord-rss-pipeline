@@ -22,6 +22,12 @@ jobs:
 
       - name: Run Feed Parser
         env:
+          WEBHOOK_DEVOPS: ${{ secrets.WEBHOOK_DEVOPS }}
+          WEBHOOK_SECOPS: ${{ secrets.WEBHOOK_SECOPS }}
+          WEBHOOK_VULN: ${{ secrets.WEBHOOK_VULN }}
+          WEBHOOK_OS: ${{ secrets.WEBHOOK_OS }}
+          WEBHOOK_LINUX: ${{ secrets.WEBHOOK_LINUX }}
+          WEBHOOK_TECH: ${{ secrets.WEBHOOK_TECH }}
           WEBHOOK_AI: ${{ secrets.WEBHOOK_AI }}
           WEBHOOK_HARDWARE: ${{ secrets.WEBHOOK_HARDWARE }}
           WEBHOOK_GEOPOLITICS: ${{ secrets.WEBHOOK_GEOPOLITICS }}
