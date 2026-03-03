@@ -7,7 +7,7 @@ from time import mktime
 
 FEEDS = {
     "AI News": {
-        "url": "https://venturebeat.com/category/ai/feed/",
+        "url": "https://www.wired.com/feed/tag/ai/latest/rss",
         "webhook": os.environ.get("WEBHOOK_AI")
     },
     "Computer Hardware": {
