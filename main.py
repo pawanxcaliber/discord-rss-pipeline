@@ -1,12 +1,41 @@
 import feedparser
 import requests
 import os
-import re # We added 're' (Regular Expressions) to hunt for hidden image links
+import re
 from datetime import datetime, timedelta, timezone
 from time import mktime
 
+# Master list of all feeds and their corresponding webhooks
 FEEDS = {
-    "AI News": {
+    "DevOps": {
+        "url": "https://devops.com/feed/",
+        "webhook": os.environ.get("WEBHOOK_DEVOPS")
+    },
+    "SecOps": {
+        "url": "https://www.csoonline.com/feed/",
+        "webhook": os.environ.get("WEBHOOK_SECOPS")
+    },
+    "Vulnerability": {
+        "url": "https://feeds.feedburner.com/TheHackersNews",
+        "webhook": os.environ.get("WEBHOOK_VULN")
+    },
+    "Open Source": {
+        "url": "https://itsfoss.com/feed/",
+        "webhook": os.environ.get("WEBHOOK_OS")
+    },
+    "Linux": {
+        "url": "https://www.phoronix.com/rss.php",
+        "webhook": os.environ.get("WEBHOOK_LINUX")
+    },
+    "Software Stacks": {
+        "url": "https://feed.infoq.com/",
+        "webhook": os.environ.get("WEBHOOK_TECH")
+    },
+    "AI News (VentureBeat)": {
+        "url": "https://venturebeat.com/category/ai/feed/",
+        "webhook": os.environ.get("WEBHOOK_AI")
+    },
+    "AI News (Wired)": {
         "url": "https://www.wired.com/feed/tag/ai/latest/rss",
         "webhook": os.environ.get("WEBHOOK_AI")
     },
@@ -34,14 +63,16 @@ HEADERS = {
 }
 
 def extract_image_url(entry):
-    """Hunts down the image URL no matter where the website hides it."""
-    # 1. Check standard media_content
+    """Hunts down the image URL safely to prevent KeyErrors."""
+    # 1. Safely check media_content
     if 'media_content' in entry and len(entry.media_content) > 0:
-        return entry.media_content[0]['url']
+        url = entry.media_content[0].get('url')
+        if url: return url
     
-    # 2. Check media_thumbnail
+    # 2. Safely check media_thumbnail
     if 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0:
-        return entry.media_thumbnail[0]['url']
+        url = entry.media_thumbnail[0].get('url')
+        if url: return url
         
     # 3. Check enclosures (often used by news sites)
     if 'links' in entry:
@@ -70,7 +101,7 @@ def send_to_discord(webhook_url, entry, feed_name):
         "author": {"name": feed_name}
     }
     
-    # Run our new image hunter function!
+    # Run our defensive image hunter function
     image_url = extract_image_url(entry)
     if image_url:
         embed["image"] = {"url": image_url}
@@ -79,15 +110,16 @@ def send_to_discord(webhook_url, entry, feed_name):
     try:
         requests.post(webhook_url, json=payload, timeout=10)
     except Exception as e:
-        print(f"Failed to send to Discord: {e}")
+        print(f"Failed to send to Discord for {feed_name}: {e}")
 
 def main():
     now = datetime.now(timezone.utc)
-    # I've left this at 1 day so you can immediately see the new photos drop in!
-    time_window = timedelta(days=1) 
+    # Set strictly to 20 minutes to match the cron job and prevent duplicates
+    time_window = timedelta(minutes=20) 
 
     for name, data in FEEDS.items():
         if not data["webhook"]:
+            print(f"Skipping {name}: No webhook configured.")
             continue
             
         print(f"Fetching {name}...")
@@ -101,6 +133,7 @@ def main():
                 if hasattr(entry, 'published_parsed') and entry.published_parsed is not None:
                     published_time = datetime.fromtimestamp(mktime(entry.published_parsed), timezone.utc)
                     
+                    # If the article was published in the last 20 minutes, send it
                     if now - published_time <= time_window:
                         print(f"Sending new article: {entry.title}")
                         send_to_discord(data["webhook"], entry, name)
