@@ -6,7 +6,7 @@ from time import mktime
 
 FEEDS = {
     "AI News": {
-        "url": "https://www.artificialintelligence-news.com/feed/",
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
         "webhook": os.environ.get("WEBHOOK_AI")
     },
     "Computer Hardware": {
@@ -53,7 +53,7 @@ def send_to_discord(webhook_url, entry, feed_name):
 
 def main():
     now = datetime.now(timezone.utc)
-    time_window = timedelta(minutes=20) 
+    time_window = timedelta(days=1) 
 
     for name, data in FEEDS.items():
         if not data["webhook"]:
