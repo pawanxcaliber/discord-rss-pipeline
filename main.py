@@ -1,6 +1,7 @@
 import feedparser
 import requests
 import os
+import re # We added 're' (Regular Expressions) to hunt for hidden image links
 from datetime import datetime, timedelta, timezone
 from time import mktime
 
@@ -27,23 +28,52 @@ FEEDS = {
     }
 }
 
-# We disguise our script as a standard Google Chrome browser on Windows
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/rss+xml, application/xml, text/xml, */*'
 }
 
+def extract_image_url(entry):
+    """Hunts down the image URL no matter where the website hides it."""
+    # 1. Check standard media_content
+    if 'media_content' in entry and len(entry.media_content) > 0:
+        return entry.media_content[0]['url']
+    
+    # 2. Check media_thumbnail
+    if 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0:
+        return entry.media_thumbnail[0]['url']
+        
+    # 3. Check enclosures (often used by news sites)
+    if 'links' in entry:
+        for link in entry.links:
+            if 'type' in link and link.type.startswith('image/'):
+                return link.href
+                
+    # 4. Search the raw summary text for an HTML <img> tag
+    if 'summary' in entry:
+        match = re.search(r'<img[^>]+src="([^">]+)"', entry.summary)
+        if match:
+            return match.group(1)
+            
+    return None
+
 def send_to_discord(webhook_url, entry, feed_name):
+    # This strips out ugly HTML code (<p>, <br>, etc.) from the text preview
+    raw_summary = entry.get("summary", "")
+    clean_description = re.sub(r'<[^>]+>', '', raw_summary)
+
     embed = {
         "title": entry.title,
         "url": entry.link,
-        "description": entry.get("summary", "")[:300] + "...",
+        "description": clean_description[:300] + "...",
         "color": 3447003,
         "author": {"name": feed_name}
     }
     
-    if 'media_content' in entry and len(entry.media_content) > 0:
-        embed["image"] = {"url": entry.media_content[0]['url']}
+    # Run our new image hunter function!
+    image_url = extract_image_url(entry)
+    if image_url:
+        embed["image"] = {"url": image_url}
     
     payload = {"embeds": [embed]}
     try:
@@ -53,20 +83,18 @@ def send_to_discord(webhook_url, entry, feed_name):
 
 def main():
     now = datetime.now(timezone.utc)
+    # I've left this at 1 day so you can immediately see the new photos drop in!
     time_window = timedelta(days=1) 
 
     for name, data in FEEDS.items():
         if not data["webhook"]:
-            print(f"Skipping {name}: No webhook configured.")
             continue
             
         print(f"Fetching {name}...")
         try:
-            # 1. Fetch the raw XML data using requests with our fake browser headers
             response = requests.get(data["url"], headers=HEADERS, timeout=15)
-            response.raise_for_status() # Check if the website returned an error (like 403 Forbidden)
+            response.raise_for_status()
             
-            # 2. Pass the raw content to feedparser
             feed = feedparser.parse(response.content)
             
             for entry in feed.entries:
@@ -78,7 +106,6 @@ def main():
                         send_to_discord(data["webhook"], entry, name)
                         
         except Exception as e:
-            # If a site blocks us, print the error but continue to the next site
             print(f"Error processing {name}: {e}")
 
 if __name__ == "__main__":
